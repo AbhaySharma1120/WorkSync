@@ -286,6 +286,26 @@ function Calendar() {
   };
 
   // ========================================
+  // EVENT DOT STYLE (MOBILE CALENDAR)
+  // ========================================
+
+  const getEventDotStyle = (type) => {
+    if (type === "Meeting") {
+      return "bg-blue-500";
+    }
+
+    if (type === "Deadline") {
+      return "bg-red-500";
+    }
+
+    if (type === "Reminder") {
+      return "bg-yellow-500";
+    }
+
+    return "bg-purple-500";
+  };
+
+  // ========================================
   // FORMAT TIME
   // ========================================
 
@@ -570,18 +590,18 @@ function Calendar() {
           )}
 
           {/* =================================
-              DESKTOP CALENDAR
+              RESPONSIVE MONTH CALENDAR
           ================================== */}
 
           {!loading && (
-            <div className="hidden md:block bg-white border border-gray-100 rounded-xl shadow-sm mt-4 overflow-hidden">
+            <div className="bg-white border border-gray-100 rounded-xl shadow-sm mt-4 overflow-hidden">
               {/* WEEK DAYS */}
 
               <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-100">
                 {weekDays.map((day) => (
                   <div
                     key={day}
-                    className="py-3 text-center text-xs font-medium text-gray-500"
+                    className="py-2 sm:py-3 text-center text-[10px] sm:text-xs font-medium text-gray-500"
                   >
                     {day}
                   </div>
@@ -597,14 +617,14 @@ function Calendar() {
                   return (
                     <div
                       key={`${day}-${index}`}
-                      className="min-h-32 border-r border-b border-gray-100 p-2"
+                      className="min-h-[64px] sm:min-h-[82px] md:min-h-32 border-r border-b border-gray-100 p-1 sm:p-2"
                     >
                       {day && (
                         <>
                           {/* DATE */}
 
                           <div
-                            className={`w-7 h-7 rounded-full flex items-center justify-center text-xs ${
+                            className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs ${
                               isToday(day)
                                 ? "bg-purple-600 text-white"
                                 : "text-gray-600"
@@ -613,9 +633,38 @@ function Calendar() {
                             {day}
                           </div>
 
-                          {/* EVENTS */}
+                          {/* MOBILE EVENT INDICATORS */}
 
-                          <div className="space-y-1.5 mt-2">
+                          {dayEvents.length > 0 && (
+                            <div className="md:hidden mt-1.5">
+                              <div className="flex flex-wrap items-center gap-1">
+                                {dayEvents.slice(0, 3).map((event) => (
+                                  <span
+                                    key={event._id}
+                                    title={event.title}
+                                    className={`w-1.5 h-1.5 rounded-full ${getEventDotStyle(
+                                      event.type,
+                                    )}`}
+                                  />
+                                ))}
+
+                                {dayEvents.length > 3 && (
+                                  <span className="text-[8px] text-gray-400 leading-none">
+                                    +{dayEvents.length - 3}
+                                  </span>
+                                )}
+                              </div>
+
+                              <p className="text-[8px] text-gray-400 mt-1 truncate">
+                                {dayEvents.length}{" "}
+                                {dayEvents.length === 1 ? "event" : "events"}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* DESKTOP EVENT CARDS */}
+
+                          <div className="hidden md:block space-y-1.5 mt-2">
                             {dayEvents.map((event) => {
                               const manageable = canManageEvent(event);
 
