@@ -1,85 +1,55 @@
 import multer from "multer";
-import path from "path";
-import fs from "fs";
 
 // ========================================
-// UPLOAD DIRECTORY
+// MEMORY STORAGE
 // ========================================
 
-const uploadDirectory = path.resolve("uploads");
-
-if (!fs.existsSync(uploadDirectory)) {
-  fs.mkdirSync(uploadDirectory, {
-    recursive: true,
-  });
-}
-
-// ========================================
-// STORAGE
-// ========================================
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDirectory);
-  },
-
-  filename: (req, file, cb) => {
-    const extension = path.extname(file.originalname);
-
-    const uniqueName = `${Date.now()}-${Math.round(
-      Math.random() * 1e9,
-    )}${extension}`;
-
-    cb(null, uniqueName);
-  },
-});
+const storage = multer.memoryStorage();
 
 // ========================================
 // ALLOWED FILE TYPES
 // ========================================
 
-const allowedMimeTypes = [
-  "application/pdf",
-
-  "application/msword",
-
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-
-  "application/vnd.ms-excel",
-
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-
-  "application/vnd.ms-powerpoint",
-
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-
-  "text/plain",
-
-  "image/jpeg",
-
-  "image/png",
-
-  "image/webp",
-
-  "application/zip",
-
-  "application/x-zip-compressed",
-];
-
-// ========================================
-// FILE FILTER
-// ========================================
-
 const fileFilter = (req, file, cb) => {
-  if (allowedMimeTypes.includes(file.mimetype)) {
+  const allowedTypes = [
+    // Images
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+
+    // PDF
+    "application/pdf",
+
+    // Word
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+
+    // Excel
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+
+    // PowerPoint
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+
+    // Text
+    "text/plain",
+
+    // ZIP
+    "application/zip",
+    "application/x-zip-compressed",
+  ];
+
+  if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error("This file type is not supported"), false);
+    cb(new Error("Unsupported file type"), false);
   }
 };
 
 // ========================================
-// MULTER
+// MULTER CONFIG
 // ========================================
 
 const upload = multer({

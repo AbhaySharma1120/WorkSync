@@ -1,10 +1,10 @@
 import express from "express";
 
 import {
+  deleteFile,
+  downloadFile,
   getFiles,
   uploadFile,
-  downloadFile,
-  deleteFile,
 } from "../controllers/fileController.js";
 
 import { protect } from "../middleware/authMiddleware.js";
@@ -20,38 +20,19 @@ const router = express.Router();
 router.get("/", protect, getFiles);
 
 // ========================================
-// UPLOAD
+// UPLOAD FILE
 // ========================================
 
-router.post(
-  "/upload",
-  protect,
-
-  (req, res, next) => {
-    upload.single("file")(req, res, (error) => {
-      if (error) {
-        return res.status(400).json({
-          success: false,
-
-          message: error.message || "File upload failed",
-        });
-      }
-
-      next();
-    });
-  },
-
-  uploadFile,
-);
+router.post("/upload", protect, upload.single("file"), uploadFile);
 
 // ========================================
-// DOWNLOAD
+// DOWNLOAD FILE
 // ========================================
 
 router.get("/:id/download", protect, downloadFile);
 
 // ========================================
-// DELETE
+// DELETE FILE
 // ========================================
 
 router.delete("/:id", protect, deleteFile);

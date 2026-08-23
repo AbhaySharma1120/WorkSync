@@ -1,10 +1,45 @@
-import fs from "fs";
-import path from "path";
+import { Readable } from "stream";
 
 import File from "../models/File.js";
 
+import cloudinary from "../config/cloudinary.js";
+
 // ========================================
-// TEAM OWNER
+// CLOUDINARY UPLOAD HELPER
+// ========================================
+
+const uploadToCloudinary = (buffer, originalName) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder: "worksync/files",
+
+        resource_type: "auto",
+
+        use_filename: true,
+
+        unique_filename: true,
+
+        filename_override: originalName,
+      },
+
+      (error, result) => {
+        if (error) {
+          reject(error);
+
+          return;
+        }
+
+        resolve(result);
+      },
+    );
+
+    uploadStream.end(buffer);
+  });
+};
+
+// ========================================
+// GET TEAM OWNER
 // ========================================
 
 const getTeamOwnerId = (user) => {
@@ -12,8 +47,7 @@ const getTeamOwnerId = (user) => {
 };
 
 // ========================================
-// GET ALL FILES
-// GET /api/files
+// GET FILES
 // ========================================
 
 export const getFiles = async (req, res) => {
@@ -23,14 +57,14 @@ export const getFiles = async (req, res) => {
     const files = await File.find({
       teamOwner: teamOwnerId,
     })
-      .populate("uploadedBy", "name email role avatar")
+      .populate("uploadedBy", "name email role")
       .sort({
         createdAt: -1,
       });
 
     res.status(200).json({
       success: true,
-      count: files.length,
+
       files,
     });
   } catch (error) {
@@ -38,6 +72,7 @@ export const getFiles = async (req, res) => {
 
     res.status(500).json({
       success: false,
+
       message: "Failed to load files",
     });
   }
@@ -45,65 +80,78 @@ export const getFiles = async (req, res) => {
 
 // ========================================
 // UPLOAD FILE
-// POST /api/files/upload
 // ========================================
 
 export const uploadFile = async (req, res) => {
   try {
-    if (!req.file) {
+    if (!req.file || !req.file.buffer || req.file.buffer.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Please select a file",
+        message: "Uploaded file is empty",
       });
     }
 
     const teamOwnerId = getTeamOwnerId(req.user);
 
-    const file = await File.create({
-      originalName: req.file.originalname,
+    // ========================================
+    // UPLOAD TO CLOUDINARY
+    // ========================================
 
-      storedName: req.file.filename,
+    const cloudinaryResult = await uploadToCloudinary(
+      req.file.buffer,
+
+      req.file.originalname,
+    );
+
+    // ========================================
+    // SAVE DATABASE RECORD
+    // ========================================
+
+    const file = await File.create({
+      name: req.file.originalname,
+
+      originalName: req.file.originalname,
 
       mimeType: req.file.mimetype,
 
       size: req.file.size,
 
-      path: req.file.path,
+      url: cloudinaryResult.secure_url,
+
+      publicId: cloudinaryResult.public_id,
+
+      resourceType: cloudinaryResult.resource_type || "raw",
 
       uploadedBy: req.user._id,
 
       teamOwner: teamOwnerId,
     });
 
-    await file.populate("uploadedBy", "name email role avatar");
+    const populatedFile = await File.findById(file._id).populate(
+      "uploadedBy",
+      "name email role",
+    );
 
     res.status(201).json({
       success: true,
+
       message: "File uploaded successfully",
-      file,
+
+      file: populatedFile,
     });
   } catch (error) {
     console.error("Upload File Error:", error);
 
-    /*
-        If MongoDB save fails,
-        remove the physical file.
-      */
-
-    if (req.file?.path && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
-
     res.status(500).json({
       success: false,
-      message: "Failed to upload file",
+
+      message: error.message || "Failed to upload file",
     });
   }
 };
 
 // ========================================
 // DOWNLOAD FILE
-// GET /api/files/:id/download
 // ========================================
 
 export const downloadFile = async (req, res) => {
@@ -119,36 +167,63 @@ export const downloadFile = async (req, res) => {
     if (!file) {
       return res.status(404).json({
         success: false,
+
         message: "File not found",
       });
     }
 
-    const filePath = path.resolve(file.path);
+    // ========================================
+    // DOWNLOAD FROM CLOUDINARY
+    // ========================================
 
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({
+    const response = await fetch(file.url);
+
+    if (!response.ok) {
+      return res.status(502).json({
         success: false,
-        message: "Stored file could not be found",
+
+        message: "Unable to download file from storage",
       });
     }
 
-    res.download(filePath, file.originalName, (error) => {
-      if (error && !res.headersSent) {
-        console.error("Download File Error:", error);
+    // ========================================
+    // HEADERS
+    // ========================================
 
-        res.status(500).json({
-          success: false,
+    res.setHeader(
+      "Content-Type",
 
-          message: "Failed to download file",
-        });
-      }
-    });
+      file.mimeType || "application/octet-stream",
+    );
+
+    res.setHeader(
+      "Content-Disposition",
+
+      `attachment; filename="${encodeURIComponent(file.originalName)}"`,
+    );
+
+    // ========================================
+    // STREAM CLOUDINARY FILE
+    // ========================================
+
+    if (!response.body) {
+      return res.status(502).json({
+        success: false,
+
+        message: "File stream unavailable",
+      });
+    }
+
+    const nodeStream = Readable.fromWeb(response.body);
+
+    nodeStream.pipe(res);
   } catch (error) {
     console.error("Download File Error:", error);
 
     if (!res.headersSent) {
       res.status(500).json({
         success: false,
+
         message: "Failed to download file",
       });
     }
@@ -157,7 +232,6 @@ export const downloadFile = async (req, res) => {
 
 // ========================================
 // DELETE FILE
-// DELETE /api/files/:id
 // ========================================
 
 export const deleteFile = async (req, res) => {
@@ -173,6 +247,7 @@ export const deleteFile = async (req, res) => {
     if (!file) {
       return res.status(404).json({
         success: false,
+
         message: "File not found",
       });
     }
@@ -181,35 +256,47 @@ export const deleteFile = async (req, res) => {
     // PERMISSION
     // ========================================
 
-    const isUploader = file.uploadedBy.toString() === req.user._id.toString();
+    const uploaderId = file.uploadedBy?.toString();
 
-    const isProjectManager = req.user.role === "Project Manager";
+    const currentUserId = req.user._id.toString();
 
-    if (!isUploader && !isProjectManager) {
+    const isManager = req.user.role === "Project Manager";
+
+    const isUploader = uploaderId === currentUserId;
+
+    if (!isManager && !isUploader) {
       return res.status(403).json({
         success: false,
-        message: "You do not have permission to delete this file",
+
+        message: "You are not allowed to delete this file",
       });
     }
 
     // ========================================
-    // DELETE PHYSICAL FILE
+    // DELETE FROM CLOUDINARY
     // ========================================
 
-    const filePath = path.resolve(file.path);
+    if (file.publicId) {
+      await cloudinary.uploader.destroy(
+        file.publicId,
 
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+        {
+          resource_type: file.resourceType || "raw",
+
+          invalidate: true,
+        },
+      );
     }
 
     // ========================================
-    // DELETE MONGODB RECORD
+    // DELETE DATABASE RECORD
     // ========================================
 
-    await file.deleteOne();
+    await File.findByIdAndDelete(file._id);
 
     res.status(200).json({
       success: true,
+
       message: "File deleted successfully",
     });
   } catch (error) {
@@ -217,6 +304,7 @@ export const deleteFile = async (req, res) => {
 
     res.status(500).json({
       success: false,
+
       message: "Failed to delete file",
     });
   }
